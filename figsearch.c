@@ -22,7 +22,7 @@ typedef struct{
 
 Image* image_ctor(unsigned height, unsigned width);
 
-Image* load_image_data(char* file_name);
+Image* load_image_data(char* file_name); //TODO: maybe make this use an existing image instead of calling image_ctor
 
 void image_dtor(Image* img);
 
@@ -39,13 +39,13 @@ int get_size(FILE* file, unsigned* rows, unsigned* columns);
 
 int validate_bitmap(FILE* file, unsigned width, unsigned height);
 
-int find_line(char* file_name, int find_func(Image*, Coords*, Coords*));
+int find_shape(char* file_name, unsigned find_func(Image*, Coords*, Coords*));
 
-int find_vertical_line(Image* img, Coords* start, Coords* end);
+unsigned find_vertical_line(Image* img, Coords* start, Coords* end);
 
-int find_horizontal_line(Image* img, Coords* start, Coords* end);
+unsigned find_horizontal_line(Image* img, Coords* start, Coords* end);
 
-int find_square();
+int find_square(Image* img, Coords* start, Coords* end); //TODO: add this next
 
 
 int main(int argc, char** argv){
@@ -107,6 +107,10 @@ Image* load_image_data(char* file_name){
 }
 
 int* get_bit(Image* img, unsigned row, unsigned col){
+    /*
+    returns NULL if the row or col are out of bounds,
+    returns a pointer to a location specified by the row and col parameters
+    */
     if(row > img->height || col > img->width){
         return NULL;
     }
@@ -138,13 +142,13 @@ int arg_parse(int count, char** args){
         return test_command(args[2]);
     }
     if(count == 2 && strcmp(args[1], "hline") == 0){
-        return find_line(args[2], find_horizontal_line);
+        return find_shape(args[2], find_horizontal_line);
     }
     if(count == 2 && strcmp(args[1], "vline") == 0){
-        return find_line(args[2], find_vertical_line);
+        return find_shape(args[2], find_vertical_line);
     }
     if(count == 2 && strcmp(args[1], "square") == 0){
-        //find_square();
+        //return find_shape(args[2], find_square);
     }
     print_err("Incorrect arguments");
     return EXIT_FAILURE;
@@ -263,11 +267,12 @@ int validate_bitmap(FILE* file, unsigned width, unsigned height){
 }
 
 
-int find_line(char* file_name, int find_func(Image*, Coords*, Coords*)){
+int find_shape(char* file_name, unsigned find_func(Image*, Coords*, Coords*)){
     /*
-    function that finds the longest line (orientation is specified by the function passed in),
-    prints the coordinates of the start and the end of the line found,
-    returns EXIT_FAILURE if any of the functions fail
+    tests the bitmap validity and finds the largest shape
+    (shape specified by the find_func parameter),
+    prints the coordinates of the start and the end of the shape found,
+    returns EXIT_FAILURE if the test fails
     */
     Coords start = {0};
     Coords end = {0};
@@ -279,8 +284,10 @@ int find_line(char* file_name, int find_func(Image*, Coords*, Coords*)){
     Image* img = load_image_data(file_name);
     if(img == NULL) return EXIT_FAILURE;
 
-    if(find_func(img, &start, &end) == EXIT_FAILURE){
-        return EXIT_FAILURE;
+    unsigned size = find_func(img, &start, &end);
+    if(size == 0){
+        printf("Not found\n");
+        return EXIT_SUCCESS;
     }
 
     printf("start row %d col %d\n", start.row, start.col);
@@ -289,7 +296,12 @@ int find_line(char* file_name, int find_func(Image*, Coords*, Coords*)){
 }
 
 
-int find_vertical_line(Image* img, Coords* start, Coords* end){ 
+unsigned find_vertical_line(Image* img, Coords* start, Coords* end){
+    /*
+    function that finds the largest vertical line and writes its 
+    coordinates into the start and end parameters,
+    returns the length of the line
+    */
     unsigned max_score = 0;
     unsigned score = 0;
 
@@ -298,8 +310,6 @@ int find_vertical_line(Image* img, Coords* start, Coords* end){
             if(*get_bit(img, r, c) == 1){
                 score++;
                 if(score > max_score){
-                    start->row = r - score + 1; // score is used as an offset for the first occurrence of 1
-                    start->col = c; // start has to be in the same column as the end since this is a vertical line
                     end->row = r;
                     end->col = c;
                     max_score = score;
@@ -311,11 +321,22 @@ int find_vertical_line(Image* img, Coords* start, Coords* end){
         }
         score = 0; //resets the score for a new column
     }
-    return EXIT_SUCCESS;
+
+    // max_score is used as an offset for the first occurrence of 1
+    start->row = end->row - max_score + 1;
+    // start has to be in the same column as the end since this is a vertical line
+    start->col = end->col;
+    
+    return max_score;
 }
 
 
-int find_horizontal_line(Image* img, Coords* start, Coords* end){
+unsigned find_horizontal_line(Image* img, Coords* start, Coords* end){
+    /*
+    function that finds the largest horizontal line and writes its 
+    coordinates into the start and end parameters,
+    returns the length of the line
+    */
     unsigned max_score = 0;
     unsigned score = 0;
 
@@ -324,8 +345,6 @@ int find_horizontal_line(Image* img, Coords* start, Coords* end){
             if(*get_bit(img, r, c) == 1){
                 score++;
                 if(score > max_score){
-                    start->row = r; // start has to be in the same row as the end since this is a horizontal line
-                    start->col = c - score + 1; // score is used as an offset for the first occurrence of 1
                     end->row = r;
                     end->col = c;
                     max_score = score;
@@ -336,5 +355,17 @@ int find_horizontal_line(Image* img, Coords* start, Coords* end){
         }
         score = 0; //resets the score for a new column
     }
+    
+    // start has to be in the same row as the end since this is a horizontal line
+    start->row = end->row;
+    // max_score is used as an offset for the first occurrence of 1
+    start->col = end->col - max_score + 1;
+
+    return max_score;
+}
+
+/*
+int find_square(Image* img, Coords* start, Coords* end){
     return EXIT_SUCCESS;
 }
+*/
