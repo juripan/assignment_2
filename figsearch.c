@@ -393,7 +393,7 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
     //calculates the bottom right point based on the top left one
     end->row = start->row + max_score - 1;
     end->col = start->col + max_score - 1;
-    return max_score + 1;
+    return max_score;
 }
 
 unsigned find_points(Image* img, unsigned row, unsigned col, unsigned distance){
@@ -404,9 +404,10 @@ unsigned find_points(Image* img, unsigned row, unsigned col, unsigned distance){
     if the square shape is valid it returns prematurely,
     returns the distance between points (could also be referred to as size)
     */
+
     int *top_right, *bottom_left, *bottom_right;
 
-    for(; distance > 0; distance--){
+    for(; distance > 0; distance--){ //TODO: refactor, please
         top_right = get_bit(img, row, col + distance);
         bottom_left = get_bit(img, row + distance, col);
         bottom_right = get_bit(img, row + distance, col + distance);
