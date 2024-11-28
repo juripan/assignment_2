@@ -379,14 +379,13 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
     unsigned biggest_square = min(img->height, img->width);
     unsigned score = 0;
     unsigned max_score = 0;
-    for(unsigned distance = biggest_square; distance > 0; distance--){
-        for(unsigned r = 0; r < img->height; r++){
-            for(unsigned c = 0; c < img->width; c++){
-                if(*get_bit(img, r, c) == 1){
-                    //+1 here just so the result isn't "Not found"
-                    score = find_points(img, r, c, distance) + 1;
-                    update_max_score(score, &max_score, start, r, c);
-                }
+
+    for(unsigned r = 0; r < img->height; r++){
+        for(unsigned c = 0; c < img->width; c++){
+            if(*get_bit(img, r, c) == 1){
+                //+1 here just so the result isn't "Not found"
+                score = find_points(img, r, c, biggest_square) + 1;
+                update_max_score(score, &max_score, start, r, c);
             }
         }
     }
