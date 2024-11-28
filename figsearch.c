@@ -14,8 +14,10 @@
 #define min(a,b) (((a) < (b)) ? (a) : (b))
 
 
+typedef short int bit;
+
 typedef struct{
-    int* data;
+    bit* data;
     unsigned int width;
     unsigned int height;
 }Image;
@@ -29,6 +31,8 @@ typedef struct{
 Image* image_ctor(unsigned height, unsigned width);
 
 Image* load_image_data(char* file_name);
+
+bit* get_bit(Image* img, unsigned row, unsigned col);
 
 void image_dtor(Image** img_ptr);
 
@@ -56,8 +60,6 @@ bool points_exist(Image* img,  unsigned row, unsigned col, unsigned size);
 
 bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size);
 
-bool is_line(Image* img, Coords from, Coords to);
-
 void update_max_score(unsigned score, unsigned* max_score, Coords* end, unsigned r, unsigned c);
 
 
@@ -73,7 +75,7 @@ Image* image_ctor(unsigned height, unsigned width){
     Image* img = malloc(sizeof(Image));
     if(img == NULL) return NULL;
 
-    int* data = malloc(sizeof(int) * width * height);
+    bit* data = malloc(sizeof(bit) * width * height);
     if(data == NULL) return NULL;
 
     img->height = height;
@@ -120,7 +122,7 @@ Image* load_image_data(char* file_name){
     return img;
 }
 
-int* get_bit(Image* img, unsigned row, unsigned col){
+bit* get_bit(Image* img, unsigned row, unsigned col){
     /*
     returns NULL if the row or col are out of bounds,
     returns a pointer to a location specified by the row and col parameters
@@ -383,8 +385,10 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
     unsigned max_score = 0;
 
     for(int dist = biggest_square; dist >= 0; dist--){
-        for(unsigned r = 0; r < img->height; r++){
-            for(unsigned c = 0; c < img->width; c++){
+        //searches only the bits where the squares of size(dist) would fit
+        for(unsigned r = 0; r < img->height - dist; r++){
+            for(unsigned c = 0; c < img->width - dist; c++){
+                //if the current bit is 1 and either theres a square or the square is just a point
                 if(*get_bit(img, r, c) == 1 && (points_exist(img, r, c, dist) || dist == 0)){
                     update_max_score(dist + 1, &max_score, start, r, c);
                     end->row = start->row + max_score - 1;
@@ -404,60 +408,28 @@ bool points_exist(Image* img, unsigned row, unsigned col, unsigned distance){
     returns if the square exists
     */
 
-    int *top_right, *bottom_left, *bottom_right;
-
-    top_right = get_bit(img, row, col + distance);
-    bottom_left = get_bit(img, row + distance, col);
-    bottom_right = get_bit(img, row + distance, col + distance);
+    //we can safely dereference here since we have prevented going out of bounds in find_square
+    bit top_right = *get_bit(img, row, col + distance);
+    bit bottom_left = *get_bit(img, row + distance, col);
+    bit bottom_right = *get_bit(img, row + distance, col + distance);
     
-    if(top_right != NULL && bottom_left != NULL && bottom_right != NULL){
-        //here we can safely dereference since we know we're not out of bounds
-        if(*top_right && *bottom_left && *bottom_right){
-            return validate_lines(img, row, col, distance);
-        }
+    if(top_right && bottom_left && bottom_right){
+        return validate_lines(img, row, col, distance);
     }
     return false;
 }
 
 bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size){
     /*
-    checks every line by checking if the points make lines,
-    a line is defined as a pair of Coords structs 
-    that contain the coordinates to the start and end points of the line,
+    checks every line by checking if the corners are connected (make lines),
     returns a true if all lines exist else returns false
     */
-
-    Coords all_side_points[SQUARE_SIDE_COUNT * 2] = {{row, col}, {row, col + size}, 
-                                                    {row, col}, {row + size, col},
-                                                    {row, col + size}, {row + size, col + size},
-                                                    {row + size, col}, {row + size, col + size}};
     
-    for(int i = 0; i < SQUARE_SIDE_COUNT * 2; i+=2){
-        if(!is_line(img, all_side_points[i], all_side_points[i + 1])){
-            return false;
-        }
-    }
-    return true;
-}
-
-bool is_line(Image* img, Coords from, Coords to){
-    /*
-    checks if theres a line (horizontal or vertical) in between 2 points,
-    goes from left -> right, up -> down,
-    the "from" parameter should be the left point(if the line is horizontal)
-    or the up point (if the line is vertical),
-    returns true if the line is uninterrupted else returns false
-    */
-    while(from.row != to.row || from.col != to.col){
-        if(*get_bit(img, from.row, from.col) == 1){
-            if(from.row == to.row){
-                from.col++;
-            }
-            else {
-                from.row++;
-            }
-        }
-        else {
+    for(unsigned i = 0; i < size; i++){
+        if(*get_bit(img, row + i, col) != 1 // left
+        || *get_bit(img, row, col + i) != 1 // top
+        || *get_bit(img, row + i, col + size) != 1 // right
+        || *get_bit(img, row + size, col + i) != 1){ // bottom
             return false;
         }
     }
