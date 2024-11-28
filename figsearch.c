@@ -1,11 +1,17 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 #include <ctype.h>
 
 
 #define MAX_LINE_LEN 101
+#define SQUARE_SIDE_COUNT 4
+#define BASE_TEN 10
+
 #define print_err(msg) fprintf(stderr, msg "\n")
+//even though this is defined in <stdlib.h> the compiler decided to complain so I put it here
+#define min(a,b) (((a) < (b)) ? (a) : (b))
 
 
 typedef struct{
@@ -22,10 +28,9 @@ typedef struct{
 
 Image* image_ctor(unsigned height, unsigned width);
 
-Image* load_image_data(char* file_name); //TODO: maybe make this use an existing image instead of calling image_ctor
+Image* load_image_data(char* file_name);
 
 void image_dtor(Image* img);
-
 
 int arg_parse(int count, char** args);
 
@@ -45,7 +50,15 @@ unsigned find_vertical_line(Image* img, Coords* start, Coords* end);
 
 unsigned find_horizontal_line(Image* img, Coords* start, Coords* end);
 
-int find_square(Image* img, Coords* start, Coords* end); //TODO: add this next
+unsigned find_square(Image* img, Coords* start, Coords* end);
+
+unsigned find_points(Image* img,  unsigned row, unsigned col, unsigned size);
+
+bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size);
+
+bool is_line(Image* img, Coords from, Coords to);
+
+void update_max_score(unsigned score, unsigned* max_score, Coords* end, unsigned r, unsigned c);
 
 
 int main(int argc, char** argv){
@@ -98,6 +111,7 @@ Image* load_image_data(char* file_name){
     unsigned data_index = 0;
 
     while((buff = fgetc(file)) != EOF){
+        // no need to check for whitespaces since it was checked in test_file_structure
         if(buff == '1' || buff == '0'){
             img->data[data_index++] = buff - '0'; // subtracting '0' converts the char into an int
         }
@@ -111,19 +125,17 @@ int* get_bit(Image* img, unsigned row, unsigned col){
     returns NULL if the row or col are out of bounds,
     returns a pointer to a location specified by the row and col parameters
     */
-    if(row > img->height || col > img->width){
+    if(row >= img->height || col >= img->width){
         return NULL;
     }
     return &(img->data[(row * img->width) + col]);
 }
-
 
 void image_dtor(Image* img){
     free(img->data);
     free(img);
     img = NULL;
 }
-
 
 int arg_parse(int count, char** args){
     /*
@@ -148,12 +160,11 @@ int arg_parse(int count, char** args){
         return find_shape(args[2], find_vertical_line);
     }
     if(count == 2 && strcmp(args[1], "square") == 0){
-        //return find_shape(args[2], find_square);
+        return find_shape(args[2], find_square);
     }
     print_err("Incorrect arguments");
     return EXIT_FAILURE;
 }
-
 
 void print_help(){
     const char* HELP_STR = 
@@ -173,15 +184,18 @@ void print_help(){
     printf("%s", HELP_STR);
 }
 
-
 int test_command(char* file_name){
+    /*
+    handles the return of the test_file_structure function,
+    only needed so the other functions that use test_file_structure
+    without printing out "Valid"
+    */
     if(test_file_structure(file_name) == EXIT_FAILURE){
         return EXIT_FAILURE;   
     }
     printf("Valid\n");
     return EXIT_SUCCESS;
 }
-
 
 int test_file_structure(char* file_name){
     /*
@@ -205,7 +219,6 @@ int test_file_structure(char* file_name){
     return EXIT_SUCCESS;
 }
 
-
 int get_size(FILE* file, unsigned* rows, unsigned* columns){
     /*
     reads and validates the first 2 numbers (size of bitmap),
@@ -228,9 +241,9 @@ int get_size(FILE* file, unsigned* rows, unsigned* columns){
     }
     buff[i+1] = '\0';
 
-    *rows = strtol(buff, &next, 10);
+    *rows = strtol(buff, &next, BASE_TEN);
     
-    *columns = strtol(next, &end, 10);
+    *columns = strtol(next, &end, BASE_TEN);
 
     if(*rows == 0 || *columns == 0){
         return EXIT_FAILURE;
@@ -249,10 +262,10 @@ int validate_bitmap(FILE* file, unsigned width, unsigned height){
     unsigned bit_count = 0;
 
     for(unsigned i = 0; (buff = fgetc(file)) != EOF; i++){
-        if(/*i % 2 == 0 &&*/ (buff == '1' || buff == '0')){ //UNCOMMENT THESE WHEN TESTING ON LINUX
+        if(i % 2 == 0 && (buff == '1' || buff == '0')){
             bit_count++;
         }
-        else if(/*i % 2 != 0 &&*/ isspace(buff)){
+        else if(i % 2 != 0 && isspace(buff)){
             continue;
         }
         else{
@@ -287,18 +300,19 @@ int find_shape(char* file_name, unsigned find_func(Image*, Coords*, Coords*)){
     unsigned size = find_func(img, &start, &end);
     if(size == 0){
         printf("Not found\n");
+        image_dtor(img);
         return EXIT_SUCCESS;
     }
 
-    printf("start row %d col %d\n", start.row, start.col);
-    printf("end row %d col %d\n", end.row, end.col);
+    printf("%d %d %d %d\n", start.row, start.col, end.row, end.col);
+    image_dtor(img);
     return EXIT_SUCCESS;
 }
 
 
 unsigned find_vertical_line(Image* img, Coords* start, Coords* end){
     /*
-    function that finds the largest vertical line and writes its 
+    finds the largest vertical line and writes its 
     coordinates into the start and end parameters,
     returns the length of the line
     */
@@ -309,11 +323,7 @@ unsigned find_vertical_line(Image* img, Coords* start, Coords* end){
         for(unsigned r = 0; r < img->height; r++){ // reads columns
             if(*get_bit(img, r, c) == 1){
                 score++;
-                if(score > max_score){
-                    end->row = r;
-                    end->col = c;
-                    max_score = score;
-                }
+                update_max_score(score, &max_score, end, r, c);
             }
             else{
                 score = 0; // breaks the line
@@ -333,7 +343,7 @@ unsigned find_vertical_line(Image* img, Coords* start, Coords* end){
 
 unsigned find_horizontal_line(Image* img, Coords* start, Coords* end){
     /*
-    function that finds the largest horizontal line and writes its 
+    finds the largest horizontal line and writes its 
     coordinates into the start and end parameters,
     returns the length of the line
     */
@@ -344,11 +354,7 @@ unsigned find_horizontal_line(Image* img, Coords* start, Coords* end){
         for(unsigned c = 0; c < img->width; c++){ // reads rows
             if(*get_bit(img, r, c) == 1){
                 score++;
-                if(score > max_score){
-                    end->row = r;
-                    end->col = c;
-                    max_score = score;
-                }
+                update_max_score(score, &max_score, end, r, c);
             } else {
                 score = 0; // breaks the line
             }
@@ -364,8 +370,119 @@ unsigned find_horizontal_line(Image* img, Coords* start, Coords* end){
     return max_score;
 }
 
-/*
-int find_square(Image* img, Coords* start, Coords* end){
-    return EXIT_SUCCESS;
+unsigned find_square(Image* img, Coords* start, Coords* end){
+    /*
+    finds the largest square and writes its top left and bottom right
+    coordinates into the start and end parameters,
+    returns the length of square sides
+    */
+    unsigned biggest_square = min(img->height, img->width);
+    unsigned score = 0;
+    unsigned max_score = 0;
+    for(unsigned distance = biggest_square; distance > 0; distance--){
+        for(unsigned r = 0; r < img->height; r++){
+            for(unsigned c = 0; c < img->width; c++){
+                if(*get_bit(img, r, c) == 1){
+                    //+1 here just so the result isn't "Not found"
+                    score = find_points(img, r, c, distance) + 1;
+                    update_max_score(score, &max_score, start, r, c);
+                }
+            }
+        }
+    }
+
+    //calculates the bottom right point based on the top left one
+    end->row = start->row + max_score - 1;
+    end->col = start->col + max_score - 1;
+    return max_score + 1;
 }
-*/
+
+unsigned find_points(Image* img, unsigned row, unsigned col, unsigned distance){
+    /*
+    attempts to find points that when connected create a square shape with a given distance,
+    if it doesn't then it tries again with a smaller distance until it finds a valid combination,
+    then it passes the information to the validate_lines function,
+    if the square shape is valid it returns prematurely,
+    returns the distance between points (could also be referred to as size)
+    */
+    int *top_right, *bottom_left, *bottom_right;
+
+    for(; distance > 0; distance--){
+        top_right = get_bit(img, row, col + distance);
+        bottom_left = get_bit(img, row + distance, col);
+        bottom_right = get_bit(img, row + distance, col + distance);
+        
+        if(top_right != NULL && bottom_left != NULL && bottom_right != NULL){
+            //here we can safely dereference since we know we're not out of bounds
+            if(*top_right && *bottom_left && *bottom_right){
+                if(validate_lines(img, row, col, distance)){
+                    return distance;
+                }
+            }
+        }
+    }
+    return distance;
+}
+
+bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size){
+    /*
+    checks every line by checking if the points make lines,
+    a line is defined as a pair of Coords structs 
+    that contain the coordinates to the start and end points of the line,
+    returns a true if all lines exist else returns false
+    */
+
+    Coords all_side_points[SQUARE_SIDE_COUNT * 2] = {{row, col}, {row, col + size}, 
+                                                    {row, col}, {row + size, col},
+                                                    {row, col + size}, {row + size, col + size},
+                                                    {row + size, col}, {row + size, col + size}};
+    
+    for(int i = 0; i < SQUARE_SIDE_COUNT * 2; i+=2){
+        if(!is_line(img, all_side_points[i], all_side_points[i + 1])){
+            return false;
+        }
+    }
+    return true;
+}
+
+bool is_line(Image* img, Coords from, Coords to){
+    /*
+    checks if theres a line (horizontal or vertical) in between 2 points,
+    goes from left -> right, up -> down,
+    the "from" parameter should be the left point(if the line is horizontal)
+    or the up point (if the line is vertical),
+    returns true if the line is uninterrupted else returns false
+    */
+    while(from.row != to.row || from.col != to.col){
+        if(*get_bit(img, from.row, from.col) == 1){
+            if(from.row == to.row){
+                from.col++;
+            }
+            else {
+                from.row++;
+            }
+        }
+        else {
+            return false;
+        }
+    }
+    return true;
+}
+
+void update_max_score(unsigned score, unsigned* max_score, Coords* point, unsigned r, unsigned c){
+    /*
+    updates the max_score and the point coordinates to the given coordinates (r and c),
+    if theres a new shape with the same size it compares their coords
+    to see which one is the closest one based on the row,
+    if the row is the same then it checks the column
+    */
+    if(score > *max_score){
+        point->row = r;
+        point->col = c;
+        *max_score = score;
+    }
+    else if(score == *max_score && (point->row > r || (point->row == r && point->col > c))){
+        point->row = r;
+        point->col = c;
+    }
+}
