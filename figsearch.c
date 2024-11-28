@@ -30,7 +30,7 @@ Image* image_ctor(unsigned height, unsigned width);
 
 Image* load_image_data(char* file_name);
 
-void image_dtor(Image* img);
+void image_dtor(Image** img_ptr);
 
 int arg_parse(int count, char** args);
 
@@ -52,7 +52,7 @@ unsigned find_horizontal_line(Image* img, Coords* start, Coords* end);
 
 unsigned find_square(Image* img, Coords* start, Coords* end);
 
-unsigned find_points(Image* img,  unsigned row, unsigned col, unsigned size);
+bool points_exist(Image* img,  unsigned row, unsigned col, unsigned size);
 
 bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size);
 
@@ -131,10 +131,10 @@ int* get_bit(Image* img, unsigned row, unsigned col){
     return &(img->data[(row * img->width) + col]);
 }
 
-void image_dtor(Image* img){
-    free(img->data);
-    free(img);
-    img = NULL;
+void image_dtor(Image** img_ptr){
+    free((*img_ptr)->data);
+    free(*img_ptr);
+    *img_ptr = NULL;
 }
 
 int arg_parse(int count, char** args){
@@ -142,7 +142,7 @@ int arg_parse(int count, char** args){
     parses the passed in arguments and triggers the corresponding function,
     returns EXIT_FAILURE if anything goes wrong, otherwise retruns EXIT_SUCCESS 
     */
-    if(count > 2){
+    if(count > 2){ //note: else ifs aren't needed since there's a return in every if block
         print_err("Too many of arguments");
         return EXIT_FAILURE;
     }
@@ -150,7 +150,7 @@ int arg_parse(int count, char** args){
         print_help();
         return EXIT_SUCCESS;
     }
-    else if(count == 2 && strcmp(args[1], "test") == 0){
+    if(count == 2 && strcmp(args[1], "test") == 0){
         return test_command(args[2]);
     }
     if(count == 2 && strcmp(args[1], "hline") == 0){
@@ -225,9 +225,10 @@ int get_size(FILE* file, unsigned* rows, unsigned* columns){
     writes into the rows and columns addresses the result of parsing the size,
     returns EXIT_FAILURE if it fails,
     */
-    char buff[MAX_LINE_LEN];
+
+    char buff[MAX_LINE_LEN]; // the size of the bitmap most likely won't exceed 100 digits
     char* next; // points at the expected next char
-    char* end; // points at the end of the string (end of the line)
+    char* end; // points at the end of the string
     int whitespace_count = 0;
     unsigned i;
 
@@ -298,14 +299,15 @@ int find_shape(char* file_name, unsigned find_func(Image*, Coords*, Coords*)){
     if(img == NULL) return EXIT_FAILURE;
 
     unsigned size = find_func(img, &start, &end);
+
     if(size == 0){
         printf("Not found\n");
-        image_dtor(img);
+        image_dtor(&img);
         return EXIT_SUCCESS;
     }
 
     printf("%d %d %d %d\n", start.row, start.col, end.row, end.col);
-    image_dtor(img);
+    image_dtor(&img);
     return EXIT_SUCCESS;
 }
 
@@ -374,54 +376,47 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
     /*
     finds the largest square and writes its top left and bottom right
     coordinates into the start and end parameters,
-    returns the length of square sides
+    returns the length of square sides,
+    if the square shape is valid it returns prematurely,
     */
     unsigned biggest_square = min(img->height, img->width);
-    unsigned score = 0;
     unsigned max_score = 0;
 
-    for(unsigned r = 0; r < img->height; r++){
-        for(unsigned c = 0; c < img->width; c++){
-            if(*get_bit(img, r, c) == 1){
-                //+1 here just so the result isn't "Not found"
-                score = find_points(img, r, c, biggest_square) + 1;
-                update_max_score(score, &max_score, start, r, c);
-            }
-        }
-    }
-
-    //calculates the bottom right point based on the top left one
-    end->row = start->row + max_score - 1;
-    end->col = start->col + max_score - 1;
-    return max_score;
-}
-
-unsigned find_points(Image* img, unsigned row, unsigned col, unsigned distance){
-    /*
-    attempts to find points that when connected create a square shape with a given distance,
-    if it doesn't then it tries again with a smaller distance until it finds a valid combination,
-    then it passes the information to the validate_lines function,
-    if the square shape is valid it returns prematurely,
-    returns the distance between points (could also be referred to as size)
-    */
-
-    int *top_right, *bottom_left, *bottom_right;
-
-    for(; distance > 0; distance--){ //TODO: refactor, please
-        top_right = get_bit(img, row, col + distance);
-        bottom_left = get_bit(img, row + distance, col);
-        bottom_right = get_bit(img, row + distance, col + distance);
-        
-        if(top_right != NULL && bottom_left != NULL && bottom_right != NULL){
-            //here we can safely dereference since we know we're not out of bounds
-            if(*top_right && *bottom_left && *bottom_right){
-                if(validate_lines(img, row, col, distance)){
-                    return distance;
+    for(int dist = biggest_square; dist >= 0; dist--){
+        for(unsigned r = 0; r < img->height; r++){
+            for(unsigned c = 0; c < img->width; c++){
+                if(*get_bit(img, r, c) == 1 && (points_exist(img, r, c, dist) || dist == 0)){
+                    update_max_score(dist + 1, &max_score, start, r, c);
+                    end->row = start->row + max_score - 1;
+                    end->col = start->col + max_score - 1;
+                    return max_score;
                 }
             }
         }
     }
-    return distance;
+    return max_score;
+}
+
+bool points_exist(Image* img, unsigned row, unsigned col, unsigned distance){
+    /*
+    checks if points exist so that when connected create a square shape with a given distance,
+    if it finds them it passes the information to the validate_lines function,
+    returns if the square exists
+    */
+
+    int *top_right, *bottom_left, *bottom_right;
+
+    top_right = get_bit(img, row, col + distance);
+    bottom_left = get_bit(img, row + distance, col);
+    bottom_right = get_bit(img, row + distance, col + distance);
+    
+    if(top_right != NULL && bottom_left != NULL && bottom_right != NULL){
+        //here we can safely dereference since we know we're not out of bounds
+        if(*top_right && *bottom_left && *bottom_right){
+            return validate_lines(img, row, col, distance);
+        }
+    }
+    return false;
 }
 
 bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size){
