@@ -184,6 +184,7 @@ void print_help(){
     prints out all of the commands that this program has
     and their short description to the console,
     */
+
     const char* HELP_STR = 
     "All commands:\n"
     "   ./figsearch --help\n"
@@ -249,7 +250,7 @@ int get_size(FILE* file, unsigned* rows, unsigned* columns){
     char buff[MAX_LINE_LEN]; // the size of the bitmap most likely won't exceed 100 digits
     char* next; // points at the expected next char
     char* end; // points at the end of the string
-    int whitespace_count = 0;
+    int whitespace_count = 0; //there cant be more than one whitespace in between two numbers
     
     unsigned i; //declared here so its available outside of the for loop scope
     for(i = 0; (buff[i] = fgetc(file)) != EOF; i++){
