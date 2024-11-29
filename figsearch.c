@@ -58,12 +58,13 @@ unsigned find_square(Image* img, Coords* start, Coords* end);
 
 bool points_exist(Image* img,  unsigned row, unsigned col, unsigned size);
 
-bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size);
+bool are_lines_valid(Image* img, unsigned row, unsigned col, unsigned size);
 
 void update_max_score(unsigned score, unsigned* max_score, Coords* end, unsigned r, unsigned c);
 
 
 int main(int argc, char** argv){
+    // argc - 1 because we ignore the first argument (the program name)
     if(arg_parse(argc - 1, argv) == EXIT_FAILURE)
         return EXIT_FAILURE;
 
@@ -75,6 +76,7 @@ Image* image_ctor(unsigned height, unsigned width){
     Image* img = malloc(sizeof(Image));
     if(img == NULL) return NULL;
 
+    //one dimensional array used like a 2d array (see get_bit function)
     bit* data = malloc(sizeof(bit) * width * height);
     if(data == NULL) return NULL;
 
@@ -91,6 +93,7 @@ Image* load_image_data(char* file_name){
     loads file bitmap image into the Image struct from the file,
     returns a pointer to the Image struct
     */
+
     FILE* file = fopen(file_name, "r");
     if(file == NULL){
         print_err("fopen failed");
@@ -124,9 +127,11 @@ Image* load_image_data(char* file_name){
 
 bit* get_bit(Image* img, unsigned row, unsigned col){
     /*
+    returns a pointer to a location in the Image->data array
+    specified by the row and col parameters,
     returns NULL if the row or col are out of bounds,
-    returns a pointer to a location specified by the row and col parameters
     */
+
     if(row >= img->height || col >= img->width){
         return NULL;
     }
@@ -134,6 +139,11 @@ bit* get_bit(Image* img, unsigned row, unsigned col){
 }
 
 void image_dtor(Image** img_ptr){
+    /*
+    frees all memory allocated for Image struct
+    and sets the pointer to NULL to prevent accidental use
+    */
+
     free((*img_ptr)->data);
     free(*img_ptr);
     *img_ptr = NULL;
@@ -144,6 +154,7 @@ int arg_parse(int count, char** args){
     parses the passed in arguments and triggers the corresponding function,
     returns EXIT_FAILURE if anything goes wrong, otherwise retruns EXIT_SUCCESS 
     */
+
     if(count > 2){ //note: else ifs aren't needed since there's a return in every if block
         print_err("Too many of arguments");
         return EXIT_FAILURE;
@@ -169,6 +180,10 @@ int arg_parse(int count, char** args){
 }
 
 void print_help(){
+    /*
+    prints out all of the commands that this program has
+    and their short description to the console,
+    */
     const char* HELP_STR = 
     "All commands:\n"
     "   ./figsearch --help\n"
@@ -190,8 +205,10 @@ int test_command(char* file_name){
     /*
     handles the return of the test_file_structure function,
     only needed so the other functions that use test_file_structure
-    without printing out "Valid"
+    without printing out "Valid",
+    returns the return of test_file_structure
     */
+
     if(test_file_structure(file_name) == EXIT_FAILURE){
         return EXIT_FAILURE;   
     }
@@ -204,6 +221,7 @@ int test_file_structure(char* file_name){
     opens a file with the file name that is passed in and checks if it has a valid file structure,
     returns EXIT_FAILURE if the test fails of the file doesn't open, else it returns EXIT_SUCCESS
     */
+
     FILE* file = fopen(file_name, "r");
     unsigned height, width;
     
@@ -232,8 +250,8 @@ int get_size(FILE* file, unsigned* rows, unsigned* columns){
     char* next; // points at the expected next char
     char* end; // points at the end of the string
     int whitespace_count = 0;
-    unsigned i;
-
+    
+    unsigned i; //declared here so its available outside of the for loop scope
     for(i = 0; (buff[i] = fgetc(file)) != EOF; i++){
         if(isspace(buff[i])!= 0){
             whitespace_count++;
@@ -261,6 +279,7 @@ int validate_bitmap(FILE* file, unsigned width, unsigned height){
     and if the format of the file is correct,
     returns EXIT_FAILURE if the validation failed,
     */
+
     char buff;
     unsigned bit_count = 0;
 
@@ -290,13 +309,13 @@ int find_shape(char* file_name, unsigned find_func(Image*, Coords*, Coords*)){
     prints the coordinates of the start and the end of the shape found,
     returns EXIT_FAILURE if the test fails
     */
+
     Coords start = {0};
     Coords end = {0};
 
-    if(test_file_structure(file_name) == EXIT_FAILURE){
+    if(test_file_structure(file_name) == EXIT_FAILURE)
         return EXIT_FAILURE;
-    }
-
+    
     Image* img = load_image_data(file_name);
     if(img == NULL) return EXIT_FAILURE;
 
@@ -320,6 +339,7 @@ unsigned find_vertical_line(Image* img, Coords* start, Coords* end){
     coordinates into the start and end parameters,
     returns the length of the line
     */
+
     unsigned max_score = 0;
     unsigned score = 0;
 
@@ -351,6 +371,7 @@ unsigned find_horizontal_line(Image* img, Coords* start, Coords* end){
     coordinates into the start and end parameters,
     returns the length of the line
     */
+
     unsigned max_score = 0;
     unsigned score = 0;
 
@@ -381,6 +402,8 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
     returns the length of square sides,
     if the square shape is valid it returns prematurely,
     */
+
+    //finds out the largest possible square side
     unsigned biggest_square = min(img->height, img->width);
     unsigned max_score = 0;
 
@@ -391,7 +414,7 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
                 //if the current bit is 1 and either theres a square or the square is just a point
                 if(*get_bit(img, r, c) == 1 && (points_exist(img, r, c, dist) || dist == 0)){
                     update_max_score(dist + 1, &max_score, start, r, c);
-                    end->row = start->row + max_score - 1;
+                    end->row = start->row + max_score - 1; //has to be updated here because of the return
                     end->col = start->col + max_score - 1;
                     return max_score;
                 }
@@ -404,7 +427,7 @@ unsigned find_square(Image* img, Coords* start, Coords* end){
 bool points_exist(Image* img, unsigned row, unsigned col, unsigned distance){
     /*
     checks if points exist so that when connected create a square shape with a given distance,
-    if it finds them it passes the information to the validate_lines function,
+    if it finds them it passes the information to the are_lines_valid function,
     returns if the square exists
     */
 
@@ -414,15 +437,15 @@ bool points_exist(Image* img, unsigned row, unsigned col, unsigned distance){
     bit bottom_right = *get_bit(img, row + distance, col + distance);
     
     if(top_right && bottom_left && bottom_right){
-        return validate_lines(img, row, col, distance);
+        return are_lines_valid(img, row, col, distance);
     }
     return false;
 }
 
-bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size){
+bool are_lines_valid(Image* img, unsigned row, unsigned col, unsigned size){
     /*
     checks every line by checking if the corners are connected (make lines),
-    returns a true if all lines exist else returns false
+    returns true if all lines exist else returns false
     */
     
     for(unsigned i = 0; i < size; i++){
@@ -436,20 +459,21 @@ bool validate_lines(Image* img, unsigned row, unsigned col, unsigned size){
     return true;
 }
 
-void update_max_score(unsigned score, unsigned* max_score, Coords* point, unsigned r, unsigned c){
+void update_max_score(unsigned score, unsigned* max_score, Coords* point, unsigned row, unsigned col){
     /*
-    updates the max_score and the point coordinates to the given coordinates (r and c),
+    updates the max_score and the point coordinates to the given coordinates (row and col),
     if theres a new shape with the same size it compares their coords
     to see which one is the closest one based on the row,
     if the row is the same then it checks the column
     */
+
     if(score > *max_score){
-        point->row = r;
-        point->col = c;
+        point->row = row;
+        point->col = col;
         *max_score = score;
     }
-    else if(score == *max_score && (point->row > r || (point->row == r && point->col > c))){
-        point->row = r;
-        point->col = c;
+    else if(score == *max_score && (point->row > row || (point->row == row && point->col > col))){
+        point->row = row;
+        point->col = col;
     }
 }
