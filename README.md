@@ -1,7 +1,7 @@
 # FIGSEARCH
 
 2nd college assignment,
-A program that scans a 2d array of "pixels" from a text file and can find the largest vertical line, horizontal line or the largest square and prints their coordinates to the console.
+A program that scans a 2d array of "pixels" from a text file and has functions that find the largest vertical line, horizontal line or the largest square and prints their coordinates to the console.
 Written for linux only (windows text files have \n\r instead of \n),
 
 Note: the correct format for the file is first 2 numbers are the size of the "image" the rest of them are either 1 (full pixel) or 0 (empty pixel) and every number is split from the others by one whitespace character,
